@@ -9,11 +9,18 @@ if (!token || !currentUser) {
 // Socket.io initialization
 const socket =
   window.socket ||
-  io("https://skillbridge-backend-qovl.onrender.com", { auth: { token } });
+  io("https://skillbridge-backend-qovl.onrender.com", {
+    auth: { token },
+  });
+
 if (!window.socket) {
   window.socket = socket;
-  socket.emit("joinChat");
 }
+
+socket.on("connect", () => {
+  console.log("Socket Connected:", socket.id);
+  socket.emit("joinChat");
+});
 
 window.showToast = function showToast(msg) {
   const toast = document.createElement("div");
