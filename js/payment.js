@@ -4,7 +4,6 @@ const user = JSON.parse(localStorage.getItem("currentUser"));
 // === AUTH CHECK ===
 if (!token || !user) {
   window.location.href = "login.html";
-  return;
 }
 
 window.showToast = function showToast(msg) {
