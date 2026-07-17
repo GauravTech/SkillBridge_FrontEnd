@@ -8,21 +8,109 @@ window.openBooking = function (mentorName) {
   }
 };
 
-window.openReview = function (mentorName, rating) {
+window.openReview = async function (mentorId, mentorName) {
   const modal = document.getElementById("review-modal");
-  if (modal) {
-    document.getElementById("modal-review-mentor-name").innerText =
-      `Reviews for ${mentorName}`;
+  if (!modal) return;
+
+  document.getElementById("modal-review-mentor-name").innerText =
+    `Reviews for ${mentorName}`;
+  document.getElementById("modal-mentor-rating").innerText = "Loading...";
+
+  const starsContainer = document.getElementById("modal-mentor-stars");
+  if (starsContainer) starsContainer.innerHTML = "";
+
+  document.getElementById("modal-stat-total").innerText = "-";
+  document.getElementById("modal-stat-positive").innerText = "-";
+  document.getElementById("modal-stat-negative").innerText = "-";
+
+  const reviewsList = document.getElementById("modal-reviews-list");
+  if (reviewsList) reviewsList.innerHTML = "<p>Loading reviews...</p>";
+
+  modal.style.display = "flex";
+
+  try {
+    const res = await fetch(
+      `https://skillbridge-backend-qovl.onrender.com/api/reviews/mentor/${mentorId}`,
+    );
+    const data = await res.json();
+
+    // Render Stats
     document.getElementById("modal-mentor-rating").innerText =
-      `${parseFloat(rating).toFixed(1)}/5`;
-    modal.style.display = "flex";
+      `${parseFloat(data.stats.averageRating).toFixed(1)}/5`;
+    document.getElementById("modal-stat-total").innerText =
+      data.stats.totalReviewsCount;
+    document.getElementById("modal-stat-positive").innerText =
+      data.stats.positiveReviewsCount;
+    document.getElementById("modal-stat-negative").innerText =
+      data.stats.negativeReviewsCount;
+
+    // Star icons
+    if (starsContainer) {
+      const rating = data.stats.averageRating;
+      starsContainer.innerHTML =
+        `<i class="fas fa-star"></i>`.repeat(Math.floor(rating)) +
+        (rating % 1 >= 0.5
+          ? `<i class="fas fa-star-half-alt"></i>`
+          : rating % 1 > 0
+            ? `<i class="far fa-star"></i>`
+            : "");
+    }
+
+    // Render Review List
+    if (reviewsList) {
+      reviewsList.innerHTML = "";
+      if (data.reviews.length === 0) {
+        reviewsList.innerHTML =
+          '<p style="color: var(--text-muted); font-size: 0.9rem;">No reviews yet.</p>';
+        return;
+      }
+
+      data.reviews.forEach((review) => {
+        const reviewEl = document.createElement("div");
+        reviewEl.className = "review-item";
+        reviewEl.style.borderBottom = "1px solid #eee";
+        reviewEl.style.paddingBottom = "10px";
+        reviewEl.style.marginBottom = "10px";
+
+        const starsHtml =
+          `<i class="fas fa-star" style="color: #f1c40f;"></i>`.repeat(
+            review.rating,
+          ) +
+          `<i class="far fa-star" style="color: #ccc;"></i>`.repeat(
+            5 - review.rating,
+          );
+
+        const dateStr = new Date(review.createdAt).toLocaleDateString(
+          undefined,
+          {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          },
+        );
+
+        reviewEl.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <p style="margin: 0; font-size: 0.9rem; font-weight: bold;">${review.studentId ? review.studentId.name : "Anonymous Student"}</p>
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">${dateStr}</span>
+                    </div>
+                    <div style="margin: 3px 0;">${starsHtml}</div>
+                    <p style="margin: 5px 0 0; font-size: 0.85rem; color: #555; line-height: 1.4;">${review.reviewText}</p>
+                `;
+        reviewsList.appendChild(reviewEl);
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    if (reviewsList)
+      reviewsList.innerHTML =
+        '<p class="error-msg">Failed to load reviews.</p>';
   }
 };
 
 document.addEventListener("DOMContentLoaded", () => {
   const token = localStorage.getItem("token");
   const user = JSON.parse(localStorage.getItem("currentUser"));
-  const API_URL = "https://skillbridge-backend-qovl.onrender.com";
   // === 2. SELECTORS ===
   const nameDisplay = document.getElementById("profile-name-main");
   const nameInput = document.getElementById("name-edit");
@@ -54,11 +142,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!token || !user) {
     window.location.href = "login.html";
     return;
-  }
-  const socket = io(API_URL);
-
-  if (user) {
-    socket.emit("joinChat", user.id);
   }
 
   // === PROFILE IMAGE BASE64 CONVERSION ===
@@ -203,7 +286,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     mentorGrid.innerHTML = "<p>Finding mentors...</p>";
     try {
-      const response = await fetch(`${API_URL}/api/users/mentors`);
+      const response = await fetch(
+        "https://skillbridge-backend-qovl.onrender.com/api/users/mentors",
+      );
       allMentors = await response.json();
       renderMentors(allMentors);
     } catch (error) {
@@ -224,11 +309,32 @@ document.addEventListener("DOMContentLoaded", () => {
     mentorsToDisplay.forEach((mentor) => {
       const card = document.createElement("div");
       card.className = "mentor-card";
+
+      // Build star rating HTML for mentor card
+      const avgRating = mentor.rating || 0;
+      const fullStars = Math.floor(avgRating);
+      const halfStar = avgRating % 1 >= 0.5;
+      let starsHtml = "";
+      for (let i = 0; i < fullStars; i++)
+        starsHtml +=
+          '<i class="fas fa-star" style="color:#f1c40f;font-size:0.8rem;"></i>';
+      if (halfStar)
+        starsHtml +=
+          '<i class="fas fa-star-half-alt" style="color:#f1c40f;font-size:0.8rem;"></i>';
+      for (let i = fullStars + (halfStar ? 1 : 0); i < 5; i++)
+        starsHtml +=
+          '<i class="far fa-star" style="color:#ccc;font-size:0.8rem;"></i>';
+      const ratingDisplay =
+        mentor.totalReviewsCount > 0
+          ? `<div style="display:flex;align-items:center;gap:5px;margin-top:3px;">${starsHtml}<span style="font-size:0.78rem;color:#888;">${avgRating.toFixed(1)} (${mentor.totalReviewsCount})</span></div>`
+          : `<div style="font-size:0.78rem;color:#aaa;margin-top:3px;">No reviews yet</div>`;
+
       card.innerHTML = `
                 <div class="mentor-header">
                     <img src="${mentor.profilePic || "assets/images/default-avatar.png"}" class="mentor-avatar">
                     <div class="mentor-title">
                         <h3>${mentor.name}</h3>
+                        ${ratingDisplay}
                         <span class="role-badge">Mentor</span>
                     </div>
                 </div>
@@ -242,7 +348,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <button class="book-btn" onclick="window.openBooking('${mentor.name}')" style="flex:1;">
                         <i class="fas fa-calendar-check"></i> Book Session
                     </button>
-                    <button class="review-btn" onclick="window.openReview('${mentor.name}', ${mentor.rating || 4.5})" style="padding: 10px 15px; background: #fff; border: 1px solid var(--accent-color); color: var(--accent-color); border-radius: 5px; cursor: pointer; font-size: 0.9rem; font-weight: 500;">
+                    <button class="review-btn" onclick="window.openReview('${mentor._id}', '${mentor.name}')" style="padding: 10px 15px; background: #fff; border: 1px solid var(--accent-color); color: var(--accent-color); border-radius: 5px; cursor: pointer; font-size: 0.9rem; font-weight: 500;">
                         Review
                     </button>
                 </div>
@@ -277,9 +383,12 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadUserProfile() {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/api/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await fetch(
+        "https://skillbridge-backend-qovl.onrender.com/api/users/profile",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       if (response.ok) {
         const data = await response.json();
         nameDisplay.textContent = data.name || "User Name";
@@ -317,14 +426,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       saveBtn.textContent = "Saving...";
-      const res = await fetch(`${API_URL}/api/users/profile`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+      const res = await fetch(
+        "https://skillbridge-backend-qovl.onrender.com/api/users/profile",
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify(body),
-      });
+      );
       if (res.ok) {
         showToast("Profile Updated!");
         toggleEditMode(false);
@@ -410,9 +522,12 @@ document.addEventListener("DOMContentLoaded", () => {
     historyList.innerHTML = "";
 
     try {
-      const res = await fetch(`${API_URL}/api/bookings/my-sessions`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
+      const res = await fetch(
+        "https://skillbridge-backend-qovl.onrender.com/api/bookings/my-sessions",
+        {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        },
+      );
       const bookings = await res.json();
 
       // Clear containers
@@ -517,14 +632,17 @@ document.addEventListener("DOMContentLoaded", () => {
   window.updateStudentStatus = async function (bookingId, newStatus) {
     if (!confirm("Are you sure you want to cancel this request?")) return;
     try {
-      const res = await fetch(`${API_URL}/api/bookings/${bookingId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+      const res = await fetch(
+        `https://skillbridge-backend-qovl.onrender.com/api/bookings/${bookingId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
         },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      );
 
       if (res.ok) {
         loadUpcomingSessions();
@@ -567,14 +685,17 @@ document.addEventListener("DOMContentLoaded", () => {
           modalSubmitBtn.innerText = "Sending Request...";
         }
 
-        const response = await fetch(`${API_URL}/api/bookings`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+        const response = await fetch(
+          "https://skillbridge-backend-qovl.onrender.com/api/bookings",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+            body: JSON.stringify(bookingData),
           },
-          body: JSON.stringify(bookingData),
-        });
+        );
 
         if (response.ok) {
           showToast("Booking request sent!");

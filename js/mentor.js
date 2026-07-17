@@ -19,7 +19,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const progressCircle = document.querySelector(".progress-circle");
   const tabLinks = document.querySelectorAll(".tab-link");
   const tabPanels = document.querySelectorAll(".tab-panel");
-  const API_URL = "https://skillbridge-backend-qovl.onrender.com";
 
   let isEditMode = false;
   const user = JSON.parse(localStorage.getItem("currentUser"));
@@ -29,12 +28,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!token || !user) {
     window.location.href = "login.html";
     return;
-  }
-
-  const socket = io(API_URL);
-
-  if (user) {
-    socket.emit("joinChat", user.id);
   }
 
   // === 2. IMAGE UPLOAD LOGIC ===
@@ -70,6 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (targetTab === "incoming-requests") loadIncomingRequests();
       if (targetTab === "activity-log") loadActivityHistory();
+      if (targetTab === "reviews-tab") loadMentorReviews();
     });
   });
 
@@ -128,9 +122,12 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadIncomingRequests() {
     const list = document.getElementById("requests-list");
     try {
-      const res = await fetch(`${API_URL}/api/bookings/mentor/${user.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(
+        `https://skillbridge-backend-qovl.onrender.com/api/bookings/mentor/${user.id}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       const requests = await res.json();
       const pending = requests.filter((r) => r.status === "pending");
       list.innerHTML = pending.length
@@ -159,14 +156,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   window.updateStatus = async function (bookingId, newStatus) {
     try {
-      const res = await fetch(`${API_URL}/api/bookings/${bookingId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const res = await fetch(
+        `https://skillbridge-backend-qovl.onrender.com/api/bookings/${bookingId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
         },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      );
 
       if (res.ok) {
         showToast(`Request ${newStatus}!`);
@@ -190,9 +190,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!activeList || !historyList) return;
 
     try {
-      const res = await fetch(`${API_URL}/api/bookings/mentor/${user.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(
+        `https://skillbridge-backend-qovl.onrender.com/api/bookings/mentor/${user.id}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       const bookings = await res.json();
 
       activeList.innerHTML = "";
@@ -266,9 +269,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // === 6. PROFILE DATA LOAD & SAVE ===
   async function loadUserProfile() {
     try {
-      const response = await fetch(`${API_URL}/api/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await fetch(
+        "https://skillbridge-backend-qovl.onrender.com/api/users/profile",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       if (response.ok) {
         const data = await response.json();
         nameDisplay.textContent = data.name || "Mentor Name";
@@ -277,7 +283,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const ratingDiv = document.getElementById("profile-rating");
         if (ratingDiv) {
-          const ratingValue = data.rating || 4.0;
+          const ratingValue = data.rating || 0.0;
           ratingDiv.innerHTML =
             `<i class="fas fa-star"></i>`.repeat(Math.floor(ratingValue)) +
             (ratingValue % 1 !== 0
@@ -318,14 +324,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       saveBtn.textContent = "Saving...";
-      const res = await fetch(`${API_URL}/api/users/profile`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const res = await fetch(
+        "https://skillbridge-backend-qovl.onrender.com/api/users/profile",
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify(body),
-      });
+      );
       if (res.ok) {
         showToast("Profile Updated!");
         toggleEditMode(false);
@@ -400,6 +409,87 @@ document.addEventListener("DOMContentLoaded", () => {
       toast.classList.remove("show");
       setTimeout(() => toast.remove(), 300);
     }, 3000);
+  }
+
+  async function loadMentorReviews() {
+    const reviewsList = document.getElementById("mentor-reviews-list");
+    if (!reviewsList) return;
+    reviewsList.innerHTML = "<p>Loading reviews...</p>";
+
+    try {
+      const res = await fetch(
+        `https://skillbridge-backend-qovl.onrender.com/api/reviews/mentor/${user.id}`,
+      );
+      const data = await res.json();
+
+      // Render Stats
+      document.getElementById("mentor-summary-rating").innerText =
+        `${parseFloat(data.stats.averageRating).toFixed(1)}`;
+      document.getElementById("mentor-stat-total").innerText =
+        data.stats.totalReviewsCount;
+      document.getElementById("mentor-stat-positive").innerText =
+        data.stats.positiveReviewsCount;
+      document.getElementById("mentor-stat-negative").innerText =
+        data.stats.negativeReviewsCount;
+
+      // Star icons
+      const starsContainer = document.getElementById("mentor-summary-stars");
+      if (starsContainer) {
+        const rating = data.stats.averageRating;
+        starsContainer.innerHTML =
+          `<i class="fas fa-star"></i>`.repeat(Math.floor(rating)) +
+          (rating % 1 >= 0.5
+            ? `<i class="fas fa-star-half-alt"></i>`
+            : rating % 1 > 0
+              ? `<i class="far fa-star"></i>`
+              : "");
+      }
+
+      // Render Review List
+      reviewsList.innerHTML = "";
+      if (data.reviews.length === 0) {
+        reviewsList.innerHTML = '<p class="empty-msg">No reviews yet.</p>';
+        return;
+      }
+
+      data.reviews.forEach((review) => {
+        const reviewEl = document.createElement("div");
+        reviewEl.style.borderBottom = "1px solid #eee";
+        reviewEl.style.paddingBottom = "12px";
+        reviewEl.style.marginBottom = "12px";
+
+        const starsHtml =
+          `<i class="fas fa-star" style="color: #f1c40f;"></i>`.repeat(
+            review.rating,
+          ) +
+          `<i class="far fa-star" style="color: #ccc;"></i>`.repeat(
+            5 - review.rating,
+          );
+
+        const dateStr = new Date(review.createdAt).toLocaleDateString(
+          undefined,
+          {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          },
+        );
+
+        reviewEl.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <strong style="color: var(--primary-color);">${review.studentId ? review.studentId.name : "Anonymous Student"}</strong>
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">${dateStr}</span>
+                    </div>
+                    <div style="margin-bottom: 5px;">${starsHtml}</div>
+                    <p style="margin: 0; font-size: 0.9rem; color: #555; line-height: 1.4;">${review.reviewText}</p>
+                `;
+        reviewsList.appendChild(reviewEl);
+      });
+    } catch (err) {
+      console.error(err);
+      reviewsList.innerHTML =
+        '<p class="error-msg">Failed to load reviews.</p>';
+    }
   }
 
   loadUserProfile();

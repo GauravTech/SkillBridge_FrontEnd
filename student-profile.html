@@ -225,24 +225,27 @@
     </div>
 
     <div id="review-modal" class="modal-overlay" style="display: none">
-      <div class="modal-content" style="max-width: 500px">
+      <div class="modal-content" style="max-width: 600px; padding: 25px; border-radius: 12px; position: relative;">
         <span
           class="close-modal"
           onclick="
             document.getElementById('review-modal').style.display = 'none'
           "
+          style="position: absolute; top: 15px; right: 20px; font-size: 1.5rem; cursor: pointer;"
           >&times;</span
         >
-        <h2 id="modal-review-mentor-name">Mentor Reviews</h2>
+        <h2 id="modal-review-mentor-name" style="margin-bottom: 20px; color: var(--primary-color);">Mentor Reviews</h2>
 
         <div
+          class="reviews-stats-container"
           style="
             display: flex;
             gap: 20px;
-            align-items: flex-start;
-            margin-top: 20px;
+            align-items: stretch;
+            margin-top: 10px;
           "
         >
+          <!-- Left side: Rating summary -->
           <div
             style="
               flex: 1;
@@ -250,13 +253,17 @@
               background: #f8f9fa;
               padding: 20px;
               border-radius: 10px;
+              border: 1px solid #eee;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
             "
           >
             <h3
-              style="font-size: 2.5rem; color: #f1c40f; margin: 0"
+              style="font-size: 2.5rem; color: #f1c40f; margin: 0;"
               id="modal-mentor-rating"
             >
-              4.5/5
+              0.0/5
             </h3>
             <p
               style="
@@ -267,51 +274,40 @@
             >
               Overall Rating
             </p>
-            <div style="color: #f1c40f; margin-top: 10px">
-              <i class="fas fa-star"></i><i class="fas fa-star"></i
-              ><i class="fas fa-star"></i><i class="fas fa-star"></i
-              ><i class="fas fa-star-half-alt"></i>
+            <div id="modal-mentor-stars" style="color: #f1c40f; margin-top: 10px; font-size: 1rem;">
+              <!-- Stars dynamically rendered -->
+            </div>
+            
+            <div style="margin-top: 15px; font-size: 0.85rem; text-align: left; border-top: 1px solid #ddd; padding-top: 10px; color: #555;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <span>Total Reviews:</span>
+                <strong id="modal-stat-total">0</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #2ecc71;">
+                <span>Positive (3-5★):</span>
+                <strong id="modal-stat-positive">0</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: #e74c3c;">
+                <span>Negative (1-2★):</span>
+                <strong id="modal-stat-negative">0</strong>
+              </div>
             </div>
           </div>
 
+          <!-- Right side: Reviews List -->
           <div
             style="
-              flex: 2;
-              height: 150px;
+              flex: 1.5;
+              max-height: 320px;
               overflow-y: auto;
               padding-right: 10px;
+              display: flex;
+              flex-direction: column;
             "
           >
-            <h4 style="margin-top: 0">Student Reviews</h4>
-            <div
-              class="review-item"
-              style="
-                border-bottom: 1px solid #eee;
-                padding-bottom: 10px;
-                margin-bottom: 10px;
-              "
-            >
-              <p style="margin: 0; font-size: 0.9rem; font-weight: bold">
-                Anonymous Student
-              </p>
-              <p style="margin: 5px 0 0; font-size: 0.85rem; color: #555">
-                Great session! The mentor explained the concepts really well.
-              </p>
-            </div>
-            <div
-              class="review-item"
-              style="
-                border-bottom: 1px solid #eee;
-                padding-bottom: 10px;
-                margin-bottom: 10px;
-              "
-            >
-              <p style="margin: 0; font-size: 0.9rem; font-weight: bold">
-                Aman Kumar
-              </p>
-              <p style="margin: 5px 0 0; font-size: 0.85rem; color: #555">
-                Very helpful and patient.
-              </p>
+            <h4 style="margin: 0 0 10px 0; color: #333;">Student Reviews</h4>
+            <div id="modal-reviews-list" style="display: flex; flex-direction: column; gap: 10px;">
+              <!-- Reviews dynamically loaded here -->
             </div>
           </div>
         </div>

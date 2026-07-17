@@ -404,3 +404,57 @@ video {
   border-radius: 8px;
   margin-top: 5px;
 }
+
+
+.last-message{
+    font-size:14px;
+    color:#666;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    font-weight:400;
+}
+
+.last-message.unread{
+    font-weight:700;
+    color:#111;
+}
+
+/* =======================
+   CALL EVENT BUBBLES
+======================= */
+.message.call-event {
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.call-event-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #f0f4ff;
+  border: 1px solid #d0d9f0;
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  color: #555;
+  user-select: none;
+}
+
+.call-event-bubble i {
+  font-size: 0.85rem;
+}
+
+.call-event-bubble.call-started i { color: #6c5ce7; }
+.call-event-bubble.call-joined  i { color: #00b894; }
+.call-event-bubble.call-missed  i { color: #d63031; }
+
+.call-event-bubble .call-time {
+  font-size: 0.72rem;
+  color: #999;
+  margin-left: 4px;
+}

@@ -29,7 +29,8 @@ let peerConnection = null;
 let timerInterval;
 let seconds = 0;
 let screenStream = null; // State for screen share stream
-let pendingCandidates = [];
+let callWasAccepted = false;
+let callHasEnded = false;
 const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
 // User Role Definition: Check localStorage to set the sender role dynamically
@@ -49,16 +50,86 @@ if (remoteUserLabel) {
 }
 
 const socket =
-  window.socket || io("https://skillbridge-backend-qovl.onrender.com");
+  window.socket ||
+  io("https://skillbridge-backend-qovl.onrender.com", {
+    auth: { token: localStorage.getItem("token") },
+  });
+
+// --- START: Mock Media Stream Fallback ---
+function getMockUserMedia() {
+  console.log("Generating mock media stream fallback...");
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 480;
+  const ctx = canvas.getContext("2d");
+
+  let angle = 0;
+  setInterval(() => {
+    if (!ctx) return;
+    const gradient = ctx.createLinearGradient(0, 0, 640, 480);
+    gradient.addColorStop(0, "#1e3c72");
+    gradient.addColorStop(1, "#2a5298");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 640, 480);
+
+    angle += 0.05;
+    const pulse = 10 + Math.sin(angle) * 3;
+
+    ctx.beginPath();
+    ctx.arc(320, 240, 50 + pulse, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(320, 240, 40, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 20px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Camera Offline", 320, 320);
+  }, 50);
+
+  const videoStream = canvas.captureStream(30);
+  const videoTrack = videoStream.getVideoTracks()[0];
+
+  let audioTrack = null;
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctxAudio = new AudioContext();
+    const osc = ctxAudio.createOscillator();
+    const dst = ctxAudio.createMediaStreamDestination();
+    osc.connect(dst);
+    audioTrack = dst.stream.getAudioTracks()[0];
+  } catch (e) {
+    console.error("Audio fallback error:", e);
+  }
+
+  const tracks = [];
+  if (videoTrack) tracks.push(videoTrack);
+  if (audioTrack) tracks.push(audioTrack);
+
+  return new MediaStream(tracks);
+}
+// --- END: Mock Media Stream Fallback ---
 if (!window.socket) {
   window.socket = socket;
-  if (currentUser) socket.emit("joinChat", currentUser.id);
+  if (currentUser) socket.emit("joinChat");
 }
 
 // --- START: REFINED ROOM ID LOGIC ---
 // Get the room ID from the URL parameters (e.g., ?room=xyz789)
 const urlParams = new URLSearchParams(window.location.search);
-const roomId = urlParams.get("bookingId") || urlParams.get("room");
+let roomId = urlParams.get("room");
+
+// If no room ID is in the URL, generate one and redirect to it
+if (!roomId) {
+  window.location.href =
+    currentUser?.role === "mentor"
+      ? "mentor-profile.html"
+      : "student-profile.html";
+}
 
 // --- START: CORRECTED SIDE CHAT SEND MESSAGE/FILE ---
 function enlargeImage(src) {
@@ -89,6 +160,7 @@ fileBtn.addEventListener("click", () => sideFileInput.click());
 // If redirected via Accept Call, automatically accept and wait for offer
 const autoJoin = urlParams.get("autoJoin");
 if (autoJoin === "true" && currentUser) {
+  callWasAccepted = true;
   socket.emit("callResponse", {
     callerId: urlParams.get("callerId"),
     accepted: true,
@@ -96,56 +168,60 @@ if (autoJoin === "true" && currentUser) {
   });
 
   // START local camera immediately
+  const handleMediaSuccess = (stream) => {
+    localStream = stream;
+    localVideo.srcObject = stream;
+
+    if (!peerConnection) {
+      peerConnection = new RTCPeerConnection(config);
+    }
+    peerConnection.onconnectionstatechange = () => {
+      console.log("STATE:", peerConnection.connectionState);
+
+      if (peerConnection.connectionState === "connected") {
+        startTimer();
+      }
+
+      if (peerConnection.connectionState === "disconnected") {
+        console.log("User actually disconnected");
+        remoteVideo.srcObject = null;
+      }
+    };
+
+    localStream.getTracks().forEach((track) => {
+      peerConnection.addTrack(track, localStream);
+    });
+
+    peerConnection.ontrack = (event) => {
+      if (!remoteVideo.srcObject) {
+        console.log("Remote stream received");
+        remoteVideo.srcObject = event.streams[0];
+        remoteVideo.onloadedmetadata = () => {
+          remoteVideo.play();
+        };
+      }
+    };
+
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit("iceCandidate", {
+          candidate: event.candidate,
+          room: roomId,
+        });
+      }
+    };
+  };
+
   navigator.mediaDevices
     .getUserMedia({
       video: true,
       audio: true,
     })
-    .then((stream) => {
-      localStream = stream;
-      localVideo.srcObject = stream;
-
-      if (!peerConnection) {
-        peerConnection = new RTCPeerConnection(config);
-      }
-      peerConnection.onconnectionstatechange = () => {
-        console.log("STATE:", peerConnection.connectionState);
-
-        if (peerConnection.connectionState === "connected") {
-          startTimer();
-        }
-
-        if (peerConnection.connectionState === "disconnected") {
-          console.log("User actually disconnected");
-          remoteVideo.srcObject = null;
-        }
-      };
-
-      localStream.getTracks().forEach((track) => {
-        peerConnection.addTrack(track, localStream);
-      });
-
-      peerConnection.ontrack = (event) => {
-        if (!remoteVideo.srcObject) {
-          console.log("Remote stream received", event.streams);
-          remoteVideo.srcObject = event.streams[0];
-          remoteVideo.onloadedmetadata = () => {
-            remoteVideo.play();
-          };
-        }
-      };
-
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit("iceCandidate", {
-            candidate: event.candidate,
-            room: roomId,
-          });
-        }
-      };
-    })
+    .then(handleMediaSuccess)
     .catch((err) => {
-      console.error("Mentor media error:", err);
+      console.warn("Hardware media error, fallback to mock:", err);
+      const mockStream = getMockUserMedia();
+      handleMediaSuccess(mockStream);
     });
 }
 
@@ -270,8 +346,7 @@ startCallBtn.addEventListener("click", async () => {
   startCallBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
   socket.emit("initiateCall", {
     roomId,
-    callerId: currentUser.id,
-    callerName: currentUser.name,
+    receiverId: urlParams.get("receiverId") || null,
   });
 });
 
@@ -283,6 +358,7 @@ socket.on("callFailed", (data) => {
 socket.on("callResponse", async ({ accepted }) => {
   startCallBtn.innerHTML = '<i class="fas fa-phone"></i>';
   if (accepted) {
+    callWasAccepted = true;
     await startWebRTC();
   } else {
     alert("The user declined your call.");
@@ -302,18 +378,19 @@ function startTimer() {
 }
 
 // console.log("Joining Room:", roomId);
-socket.on("connect", () => {
-  console.log("Socket Connected:", socket.id);
-
-  socket.emit("joinRoom", roomId);
-});
+socket.emit("joinRoom", roomId);
 
 async function startWebRTC() {
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+    } catch (err) {
+      console.warn("Hardware media error, fallback to mock:", err);
+      localStream = getMockUserMedia();
+    }
     localVideo.srcObject = localStream;
 
     if (!peerConnection) {
@@ -337,7 +414,7 @@ async function startWebRTC() {
 
     peerConnection.ontrack = (event) => {
       if (!remoteVideo.srcObject) {
-        console.log("Remote stream received", event.streams);
+        console.log("Remote stream received");
         remoteVideo.srcObject = event.streams[0];
         remoteVideo.onloadedmetadata = () => {
           remoteVideo.play();
@@ -356,7 +433,6 @@ async function startWebRTC() {
 
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
-    console.log("Offer sent");
     socket.emit("videoOffer", { offer, room: roomId });
   } catch (err) {
     console.error("Media error:", err);
@@ -364,27 +440,10 @@ async function startWebRTC() {
 }
 
 endCallBtn.addEventListener("click", () => {
-  if (peerConnection) (peerConnection.close(), (peerConnection = null));
-  if (localStream) {
-    localStream.getTracks().forEach((track) => track.stop());
-    localStream = null;
-  }
-  if (screenStream) {
-    screenStream.getTracks().forEach((track) => track.stop());
-    screenStream = null;
-  }
-  if (screenStream) {
-    stopScreenShare(); // UI reset karne ke liye
-  }
-  localVideo.srcObject = null;
-  remoteVideo.srcObject = null;
-  clearInterval(timerInterval);
-  timerDisplay.textContent = "00:00";
-
+  if (callHasEnded) return;
+  endCallBtn.disabled = true;
   const totalDuration = Math.ceil(seconds / 60); // minutes
   socket.emit("endCall", { roomId, duration: totalDuration });
-
-  alert(`Call ended. Duration: ${totalDuration} minute(s).`);
 });
 
 // Corrected Mute Audio Logic
@@ -432,7 +491,7 @@ socket.on("videoOffer", async ({ offer }) => {
 
       peerConnection.ontrack = (event) => {
         if (!remoteVideo.srcObject) {
-          console.log("Remote stream received", event.streams);
+          console.log("Remote stream received");
           remoteVideo.srcObject = event.streams[0];
           remoteVideo.onloadedmetadata = () => {
             remoteVideo.play();
@@ -466,16 +525,8 @@ socket.on("videoOffer", async ({ offer }) => {
       });
     }
 
-    // Set remote description FIRST
+    // Set remote description
     await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-    console.log("Offer received");
-
-    // Now add pending ICE candidates
-    while (pendingCandidates.length) {
-      await peerConnection.addIceCandidate(
-        new RTCIceCandidate(pendingCandidates.shift()),
-      );
-    }
 
     // Create answer
     const answer = await peerConnection.createAnswer();
@@ -493,24 +544,15 @@ socket.on("videoOffer", async ({ offer }) => {
 
 socket.on("videoAnswer", async ({ answer }) => {
   await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-  console.log("Answer received");
-
-  while (pendingCandidates.length) {
-    await peerConnection.addIceCandidate(
-      new RTCIceCandidate(pendingCandidates.shift()),
-    );
-  }
 });
 
 socket.on("iceCandidate", async ({ candidate }) => {
   try {
-    if (peerConnection.remoteDescription) {
+    if (peerConnection?.remoteDescription) {
       await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    } else {
-      pendingCandidates.push(candidate);
     }
   } catch (err) {
-    console.error(err);
+    console.error("ICE candidate error:", err);
   }
 });
 
@@ -583,12 +625,238 @@ socket.on("receiveMessage", (data) => {
 // Listen for when the other user disconnects
 socket.on("peerDisconnected", () => {
   console.log("Peer disconnected");
-
-  // ONLY remove remote video
-  remoteVideo.srcObject = null;
-
-  // DO NOT close everything immediately
+  // Normal end calls are finalized by callEnded, so the database update cannot
+  // race the review request. This remains a fallback for an abrupt disconnect.
+  setTimeout(() => {
+    if (!callHasEnded) handleCallEnd(false);
+  }, 400);
 });
+
+socket.on("callEnded", ({ roomId: endedRoom, completed }) => {
+  if (endedRoom === roomId) handleCallEnd(completed);
+});
+
+function isValidObjectId(id) {
+  return typeof id === "string" && /^[0-9a-fA-F]{24}$/.test(id);
+}
+
+// --- Unified Call End & Review Modal Trigger Logic ---
+function handleCallEnd(sessionCompleted = false) {
+  if (callHasEnded) return;
+  callHasEnded = true;
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach((track) => track.stop());
+    localStream = null;
+  }
+  if (screenStream) {
+    screenStream.getTracks().forEach((track) => track.stop());
+    screenStream = null;
+  }
+  localVideo.srcObject = null;
+  remoteVideo.srcObject = null;
+  clearInterval(timerInterval);
+  timerDisplay.textContent = "00:00";
+
+  // Check user role to determine next action
+  if (
+    currentUser &&
+    currentUser.role === "student" &&
+    callWasAccepted &&
+    sessionCompleted &&
+    isValidObjectId(roomId)
+  ) {
+    // Show the review modal to the student
+    showVideoReviewModal();
+  } else {
+    // Mentors are redirected directly back to their dashboard
+    alert("The call has ended.");
+    if (currentUser && currentUser.role === "mentor") {
+      window.location.href = "mentor-profile.html";
+    } else {
+      window.location.href = "student-profile.html";
+    }
+  }
+}
+
+// Review Modal Elements
+const videoReviewModal = document.getElementById("video-review-modal");
+const videoReviewForm = document.getElementById("video-review-form");
+const reviewTextarea = document.getElementById("review-textarea");
+const reviewWordCounter = document.getElementById("review-word-counter");
+const reviewMessage = document.getElementById("review-message");
+const cancelReviewBtn = document.getElementById("cancel-review-btn");
+const submitReviewBtn = document.getElementById("submit-review-btn");
+const starRatingInput = document.getElementById("star-rating-input");
+
+let selectedRating = 0;
+
+function highlightStars(count) {
+  if (!starRatingInput) return;
+  starRatingInput.querySelectorAll(".star-btn").forEach((star) => {
+    const val = Number(star.dataset.value);
+    const isSelected = val <= count;
+    star.classList.toggle("active", isSelected);
+    star.textContent = isSelected ? "★" : "☆";
+    star.setAttribute("aria-checked", String(val === count));
+  });
+}
+
+if (starRatingInput) {
+  const stars = starRatingInput.querySelectorAll(".star-btn");
+  stars.forEach((star) => {
+    star.addEventListener("mouseover", () => {
+      const val = Number(star.dataset.value);
+      highlightStars(val);
+    });
+    star.addEventListener("mouseout", () => {
+      highlightStars(selectedRating);
+    });
+    star.addEventListener("click", () => {
+      selectedRating = Number(star.dataset.value);
+      highlightStars(selectedRating);
+      checkFormValidity();
+    });
+
+    star.addEventListener("keydown", (event) => {
+      const currentIndex = Number(star.dataset.value) - 1;
+      let nextIndex = null;
+      if (event.key === "ArrowRight" || event.key === "ArrowUp")
+        nextIndex = Math.min(currentIndex + 1, stars.length - 1);
+      if (event.key === "ArrowLeft" || event.key === "ArrowDown")
+        nextIndex = Math.max(currentIndex - 1, 0);
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = stars.length - 1;
+      if (nextIndex === null) return;
+      event.preventDefault();
+      selectedRating = Number(stars[nextIndex].dataset.value);
+      highlightStars(selectedRating);
+      checkFormValidity();
+      stars[nextIndex].focus();
+    });
+  });
+}
+
+if (reviewTextarea) {
+  reviewTextarea.addEventListener("input", () => {
+    const text = reviewTextarea.value.trim();
+    const words = text ? text.split(/\s+/).filter((w) => w.length > 0) : [];
+    const wordCount = words.length;
+
+    reviewWordCounter.textContent = `Words: ${wordCount}/200`;
+
+    const counterContainer = reviewWordCounter.parentElement;
+    if (wordCount > 200) {
+      counterContainer.classList.add("warning");
+    } else {
+      counterContainer.classList.remove("warning");
+    }
+    checkFormValidity();
+  });
+}
+
+function checkFormValidity() {
+  if (!reviewTextarea || !submitReviewBtn) return;
+  const text = reviewTextarea.value.trim();
+  const words = text ? text.split(/\s+/).filter((w) => w.length > 0) : [];
+  const isValidWordCount = words.length > 0 && words.length <= 200;
+  const isRatingSelected = selectedRating >= 1 && selectedRating <= 5;
+
+  submitReviewBtn.disabled = !(isValidWordCount && isRatingSelected);
+}
+
+function showVideoReviewModal() {
+  if (videoReviewModal) {
+    selectedRating = 0;
+    highlightStars(0);
+    reviewTextarea.value = "";
+    reviewWordCounter.textContent = "Words: 0/200";
+    reviewWordCounter.parentElement.classList.remove("warning");
+    reviewMessage.style.display = "none";
+    submitReviewBtn.disabled = true;
+
+    videoReviewModal.style.display = "flex";
+  }
+}
+
+if (cancelReviewBtn) {
+  cancelReviewBtn.addEventListener("click", () => {
+    videoReviewModal.style.display = "none";
+    window.location.href = "student-profile.html";
+  });
+}
+
+if (videoReviewForm) {
+  videoReviewForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    if (selectedRating < 1 || selectedRating > 5) {
+      showReviewMsg("Please select a rating.", "error");
+      return;
+    }
+
+    const text = reviewTextarea.value.trim();
+    const words = text ? text.split(/\s+/).filter((w) => w.length > 0) : [];
+    if (words.length === 0) {
+      showReviewMsg("Please write a review before submitting.", "error");
+      return;
+    }
+    if (words.length > 200) {
+      showReviewMsg("Review exceeds the 200-word limit.", "error");
+      return;
+    }
+
+    submitReviewBtn.disabled = true;
+    showReviewMsg("Submitting review...", "success");
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        "https://skillbridge-backend-qovl.onrender.com/api/reviews",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            bookingId: roomId,
+            rating: selectedRating,
+            reviewText: text,
+          }),
+        },
+      );
+
+      const data = await res.json();
+      if (res.ok) {
+        showReviewMsg(
+          "Review submitted successfully! Redirecting...",
+          "success",
+        );
+        setTimeout(() => {
+          videoReviewModal.style.display = "none";
+          window.location.href = "student-profile.html";
+        }, 2000);
+      } else {
+        showReviewMsg(data.message || "Failed to submit review.", "error");
+        submitReviewBtn.disabled = false;
+      }
+    } catch (err) {
+      console.error(err);
+      showReviewMsg("An error occurred. Please try again.", "error");
+      submitReviewBtn.disabled = false;
+    }
+  });
+
+  function showReviewMsg(msg, type) {
+    reviewMessage.textContent = msg;
+    reviewMessage.className = `review-message-box ${type}`;
+    reviewMessage.style.display = "block";
+  }
+}
 
 // ===============================
 // IMAGE PREVIEW LOGIC

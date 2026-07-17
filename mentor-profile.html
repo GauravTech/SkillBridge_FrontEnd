@@ -96,6 +96,9 @@
             <button class="tab-link" data-tab="activity-log">
               My Sessions
             </button>
+            <button class="tab-link" data-tab="reviews-tab">
+              Reviews
+            </button>
           </div>
 
           <div id="edit-profile" class="profile-grid tab-panel active">
@@ -193,6 +196,47 @@
             <div class="activity-section" style="margin-top: 2rem">
               <h3><i class="fas fa-history"></i> Session History</h3>
               <div id="history-sessions-list"></div>
+            </div>
+          </div>
+
+          <div id="reviews-tab" class="tab-panel" style="display: none;">
+            <div class="mentor-header">
+              <h3><i class="fas fa-star"></i> Student Reviews & Ratings</h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem">
+                See what students say about your sessions and track your ratings.
+              </p>
+            </div>
+            
+            <div style="display: flex; gap: 20px; margin-top: 20px; flex-wrap: wrap; align-items: flex-start;">
+              <!-- Stats summary card -->
+              <div style="flex: 1; min-width: 250px; background: white; padding: 25px; border-radius: 10px; box-shadow: var(--card-shadow); text-align: center; border: 1px solid var(--gray-border);">
+                <h3 style="font-size: 3.5rem; color: #f1c40f; margin: 0;" id="mentor-summary-rating">0.0</h3>
+                <div id="mentor-summary-stars" style="color: #f1c40f; margin: 10px 0; font-size: 1.3rem;"></div>
+                <p style="margin: 0; font-weight: bold; color: var(--dark-text);">Average Star Rating</p>
+                
+                <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; text-align: left; font-size: 0.95rem;">
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>Total Reviews:</span>
+                    <strong id="mentor-stat-total">0</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 8px; color: #2ecc71;">
+                    <span>Positive (3-5 stars):</span>
+                    <strong id="mentor-stat-positive">0</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; color: #e74c3c;">
+                    <span>Negative (1-2 stars):</span>
+                    <strong id="mentor-stat-negative">0</strong>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Reviews List -->
+              <div style="flex: 2; min-width: 300px; background: white; padding: 25px; border-radius: 10px; box-shadow: var(--card-shadow); border: 1px solid var(--gray-border); max-height: 400px; overflow-y: auto;">
+                <h4 style="margin: 0 0 15px 0; border-bottom: 2px solid var(--light-bg); padding-bottom: 8px; color: var(--primary-color);">Review History</h4>
+                <div id="mentor-reviews-list" style="display: flex; flex-direction: column; gap: 15px;">
+                  <!-- Dynamic reviews list -->
+                </div>
+              </div>
             </div>
           </div>
         </section>

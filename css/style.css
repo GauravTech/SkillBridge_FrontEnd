@@ -1,3 +1,6 @@
+/* ==========================================================
+   GLOBAL BRAND VARIABLES
+   ========================================================== */
 :root {
   --primary-color: #1a5276; /* Deep Indigo/Teal */
   --accent-color: #4a90e2; /* Electric Blue */
@@ -10,6 +13,7 @@
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
+/* Reset & Base */
 * {
   margin: 0;
   padding: 0;
@@ -37,6 +41,9 @@ h3,
   padding: 0 20px;
 }
 
+/* ==========================================================
+   NAVBAR (MATCHES DASHBOARD BRANDING)
+   ========================================================== */
 .navbar {
   background: var(--card-light);
   padding: 10px 0;
@@ -253,4 +260,22 @@ footer {
 .file-name {
   font-size: 0.85em;
   font-weight: 600;
+}
+
+/* Unread Chat Messages Badge */
+.chat-badge {
+  background-color: #ff3b30; /* Bright Premium Red */
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: bold;
+  border-radius: 10px;
+  padding: 0 5px;
+  margin-left: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  box-sizing: border-box;
 }

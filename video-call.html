@@ -81,6 +81,46 @@
   <img id="modal-image" src="" alt="Full preview">
 </div>
 
+<!-- Student Review Modal -->
+<div id="video-review-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-content review-modal-content">
+    <h2>Rate your Session</h2>
+    <p>Please share your feedback about this session with your mentor.</p>
+    
+    <form id="video-review-form">
+      <!-- Star Rating -->
+      <div class="rating-stars-container">
+        <span class="star-rating-label">Rating:</span>
+        <div class="star-rating" id="star-rating-input" role="radiogroup" aria-label="Session rating">
+          <button type="button" class="star-btn" data-value="1" role="radio" aria-checked="false" aria-label="1 star">&#9734;</button>
+          <button type="button" class="star-btn" data-value="2" role="radio" aria-checked="false" aria-label="2 stars">&#9734;</button>
+          <button type="button" class="star-btn" data-value="3" role="radio" aria-checked="false" aria-label="3 stars">&#9734;</button>
+          <button type="button" class="star-btn" data-value="4" role="radio" aria-checked="false" aria-label="4 stars">&#9734;</button>
+          <button type="button" class="star-btn" data-value="5" role="radio" aria-checked="false" aria-label="5 stars">&#9734;</button>
+        </div>
+      </div>
+      
+      <!-- Review Textarea -->
+      <div class="form-group">
+        <label for="review-textarea">Write a Review:</label>
+        <textarea id="review-textarea" placeholder="Describe your experience with the mentor..." rows="5" required></textarea>
+        <div class="word-counter-container">
+          <span id="review-word-counter">Words: 0/200</span>
+        </div>
+      </div>
+      
+      <!-- Success/Error Message Container -->
+      <div id="review-message" class="review-message-box" style="display: none;"></div>
+      
+      <!-- Buttons -->
+      <div class="modal-actions">
+        <button type="button" id="cancel-review-btn" class="btn secondary">Cancel</button>
+        <button type="submit" id="submit-review-btn" class="btn primary" disabled>Submit Review</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/js/all.min.js"></script>
 <script src="https://cdn.socket.io/4.7.0/socket.io.min.js"></script>
 <script src="js/call-listener.js"></script>

@@ -8,10 +8,11 @@ if (!token || !currentUser) {
 // Socket.io initialization
 // Socket.io initialization
 const socket =
-  window.socket || io("https://skillbridge-backend-qovl.onrender.com");
+  window.socket ||
+  io("https://skillbridge-backend-qovl.onrender.com", { auth: { token } });
 if (!window.socket) {
   window.socket = socket;
-  socket.emit("joinChat", currentUser.id);
+  socket.emit("joinChat");
 }
 
 window.showToast = function showToast(msg) {
@@ -46,6 +47,61 @@ const conversationList = document.querySelector(".conversation-list");
 let activePersonId = null;
 let activePersonName = "";
 let contactsMap = {}; // Maps id -> { _id, name, profilePic, role }
+/* ===============================
+   CONVERSATION HELPERS
+================================= */
+
+function getMessagePreview(msg) {
+  if (!msg) return "Tap to chat";
+
+  switch (msg.msgType) {
+    case "image":
+      return "🖼 Photo";
+
+    case "video":
+      return "🎥 Video";
+
+    case "audio":
+      return "🎵 Audio";
+
+    case "file":
+      return `📄 ${msg.fileName}`;
+
+    default:
+      if (!msg.text) return "Tap to chat";
+
+      return msg.text.length > 35
+        ? msg.text.substring(0, 35) + "..."
+        : msg.text;
+  }
+}
+
+function updateConversation(contactId, msg, unread = false) {
+  const li = document.querySelector(
+    `.conversation-list li[data-id="${contactId}"]`,
+  );
+
+  if (!li) return;
+
+  const preview = li.querySelector(".last-message");
+
+  preview.textContent = getMessagePreview(msg);
+
+  preview.classList.toggle("unread", unread);
+
+  // Move conversation to top
+  conversationList.prepend(li);
+}
+
+function markConversationRead(contactId) {
+  const li = document.querySelector(
+    `.conversation-list li[data-id="${contactId}"]`,
+  );
+
+  if (!li) return;
+
+  li.querySelector(".last-message").classList.remove("unread");
+}
 
 /* ===============================
    LOAD CONTACTS
@@ -97,7 +153,7 @@ async function loadContacts() {
                   <div class="name-time">
                     <h4>${contact.name}</h4>
                   </div>
-                  <p class="last-message">Tap to chat</p>
+                        <p class="last-message">  ${contact.lastMessage || "Tap to chat"}</p>
                 </div>
             `;
       li.addEventListener("click", () => selectContact(contact._id));
@@ -134,6 +190,29 @@ async function loadContacts() {
 /* ===============================
    SELECT CONTACT
 ================================= */
+async function markAllAsSeenOnServer(contactId) {
+  try {
+    const response = await fetch(
+      "https://skillbridge-backend-qovl.onrender.com/api/chat/mark-all-seen",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ senderId: contactId }),
+      },
+    );
+    if (response.ok) {
+      if (window.updateUnreadBadge) {
+        window.updateUnreadBadge();
+      }
+    }
+  } catch (err) {
+    console.error("Failed to mark messages as seen:", err);
+  }
+}
+
 function selectContact(contactId) {
   activePersonId = contactId;
   const contact = contactsMap[contactId];
@@ -152,7 +231,7 @@ function selectContact(contactId) {
     `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.name)}&background=random`;
 
   let ratingHtml = "";
-  if (contact.rating) {
+  if (contact.rating && contact.role === "mentor") {
     ratingHtml = `<span style="font-size: 0.8rem; color: #f1c40f; margin-left: 10px;"><i class="fas fa-star"></i> ${contact.rating.toFixed(1)}</span>`;
   }
   chatName.innerHTML = `${contact.name} ${ratingHtml}`;
@@ -162,6 +241,28 @@ function selectContact(contactId) {
 
   socket.emit("checkOnlineStatus", contactId);
   loadChatHistory(contactId);
+  markConversationRead(contactId);
+  markAllAsSeenOnServer(contactId);
+
+  // Set call button URL — use active booking ID if one exists, else fallback room
+  const callBtn = document.querySelector(".call-btn");
+  if (callBtn) {
+    callBtn.href = "#";
+    callBtn.onclick = async (event) => {
+      event.preventDefault();
+      const response = await fetch(
+        `https://skillbridge-backend-qovl.onrender.com/api/bookings/active-between/${contactId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      const data = response.ok ? await response.json() : {};
+      const room =
+        data.bookingId ||
+        `direct_${[currentUser.id, contactId].sort().join("_")}`;
+      window.location.href = `video-call.html?room=${encodeURIComponent(room)}&receiverId=${contactId}`;
+    };
+  }
 }
 
 /* ===============================
@@ -227,6 +328,33 @@ function renderMessage(msg) {
     else
       tickHtml =
         '<i class="fas fa-check" style="color: gray; margin-left: 5px;"></i>';
+  }
+
+  // ── CALL EVENT (centered log bubble) ──
+  if (msg.msgType === "call_event") {
+    msgEl.className = "message call-event";
+    const text = msg.text || "";
+    let iconClass = "fas fa-phone";
+    let bubbleClass = "call-event-bubble call-started";
+    if (text.includes("Joined")) {
+      iconClass = "fas fa-phone-volume";
+      bubbleClass = "call-event-bubble call-joined";
+    } else if (text.includes("Missed") || text.includes("❌")) {
+      iconClass = "fas fa-phone-slash";
+      bubbleClass = "call-event-bubble call-missed";
+    } else if (text.includes("Video Call") || text.includes("📹")) {
+      iconClass = "fas fa-video";
+      bubbleClass = "call-event-bubble call-started";
+    }
+    msgEl.innerHTML = `
+      <div class="${bubbleClass}">
+        <i class="${iconClass}"></i>
+        <span>${text}</span>
+        <span class="call-time">${timeStr}</span>
+      </div>`;
+    chatMessages.appendChild(msgEl);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return;
   }
 
   if (msg.msgType === "image") {
@@ -305,6 +433,8 @@ chatForm.addEventListener("submit", async (e) => {
 
     renderMessage(savedMsg);
 
+    updateConversation(activePersonId, savedMsg, false);
+
     // Emit via socket
     socket.emit("sendPrivateMessage", savedMsg);
   } catch (err) {
@@ -349,6 +479,8 @@ fileInput.addEventListener("change", (e) => {
       const savedMsg = await response.json();
 
       renderMessage(savedMsg);
+
+      updateConversation(activePersonId, savedMsg, false);
       socket.emit("sendPrivateMessage", savedMsg);
     } catch (err) {
       console.error("Failed to send file:", err);
@@ -380,21 +512,32 @@ messageInput.addEventListener("input", () => {
    SOCKET RECEIVE
 ================================= */
 socket.on("receivePrivateMessage", (data) => {
-  // If the received message is from the currently active chat
+  updateConversation(data.senderId, data, data.senderId !== activePersonId);
+
   if (data.senderId === activePersonId) {
     renderMessage(data);
+
+    markConversationRead(data.senderId);
+
     socket.emit("markAsSeen", {
       messageId: data._id,
       senderId: activePersonId,
       receiverId: currentUser.id,
     });
+
+    if (window.updateUnreadBadge) {
+      setTimeout(window.updateUnreadBadge, 100);
+    }
   } else {
     window.showToast(
-      `New message from ${contactsMap[data.senderId]?.name || "someone"}`,
+      `New message from ${contactsMap[data.senderId]?.name || "Someone"}`,
     );
+
+    if (window.updateUnreadBadge) {
+      window.updateUnreadBadge();
+    }
   }
 });
-
 socket.on("typing", (senderId) => {
   if (senderId === activePersonId) typingIndicator.classList.remove("hidden");
 });

@@ -1,10 +1,10 @@
 const token = localStorage.getItem("token");
 const user = JSON.parse(localStorage.getItem("currentUser"));
-const API_URL = "https://skillbridge-backend-qovl.onrender.com";
 
 // === AUTH CHECK ===
 if (!token || !user) {
   window.location.href = "login.html";
+  return;
 }
 
 window.showToast = function showToast(msg) {
@@ -22,15 +22,18 @@ window.showToast = function showToast(msg) {
 window.payNow = async function (bookingId, amount) {
   try {
     // 1. Create order from backend
-    const res = await fetch(`${API_URL}/api/payments/razorpay/order`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
+    const res = await fetch(
+      "https://skillbridge-backend-qovl.onrender.com/api/payments/razorpay/order",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+        body: JSON.stringify({ amount }),
       },
-      cache: "no-store",
-      body: JSON.stringify({ amount }),
-    });
+    );
 
     const data = await res.json();
 
@@ -51,12 +54,12 @@ window.payNow = async function (bookingId, amount) {
       handler: async function (response) {
         // 3. Verify payment
         const verifyRes = await fetch(
-          `${API_URL}/api/payments/razorpay/verify`,
+          "https://skillbridge-backend-qovl.onrender.com/api/payments/razorpay/verify",
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
               ...response,
@@ -79,7 +82,7 @@ window.payNow = async function (bookingId, amount) {
 
       prefill: {
         name: user.name || "Student",
-        email: "user@example.com",
+        email: user.email || "",
       },
 
       theme: {
@@ -92,7 +95,7 @@ window.payNow = async function (bookingId, amount) {
     rzp.open();
   } catch (err) {
     console.error(err);
-    alert("Payment failed to start");
+    window.showToast("Payment failed to start");
   }
 };
 
@@ -111,9 +114,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadPaymentPage(bookingId) {
     try {
-      const res = await fetch(`${API_URL}/api/bookings/${bookingId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
+      const res = await fetch(
+        `https://skillbridge-backend-qovl.onrender.com/api/bookings/${bookingId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       const booking = await res.json();
 
       if (!res.ok) {
@@ -126,8 +132,10 @@ document.addEventListener("DOMContentLoaded", () => {
         booking.mentorName;
       document.getElementById("mentor-img-summary").src =
         booking.mentorPic || "assets/images/default-avatar.png";
-      document.getElementById("mentor-rating-summary").textContent =
-        booking.mentorRating.toFixed(1);
+      document.getElementById("mentor-rating-summary").textContent = (
+        booking.mentorRating || 0
+      ).toFixed(1);
+
       document.getElementById("mentor-skill-summary").textContent =
         `Mentorship on: ${booking.topic}`;
 
@@ -153,8 +161,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Calculate Prices Based on Rating
       // Formula: Total Amount = (Base Price × Rating × Duration) + Platform Commission
-      let rating = Math.round(booking.mentorRating || 0);
-      if (rating < 1) rating = 1;
+      // Use the actual saved average (for example 4.3), not a rounded
+      // whole-star value, so a newly achieved rating affects pricing.
+      const rating = Math.max(1, Number(booking.mentorRating) || 0);
 
       const basePrice = 5;
       const mentorAmount = basePrice * rating * duration;
