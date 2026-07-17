@@ -57,14 +57,7 @@ if (!window.socket) {
 // --- START: REFINED ROOM ID LOGIC ---
 // Get the room ID from the URL parameters (e.g., ?room=xyz789)
 const urlParams = new URLSearchParams(window.location.search);
-let roomId = urlParams.get("room");
-
-// If no room ID is in the URL, generate one and redirect to it
-if (!roomId) {
-  roomId = Math.random().toString(36).substring(2, 9);
-  window.location.href = `video-call.html?room=${roomId}`;
-}
-
+const roomId = urlParams.get("bookingId") || urlParams.get("room");
 // --- START: CORRECTED SIDE CHAT SEND MESSAGE/FILE ---
 function enlargeImage(src) {
   const overlay = document.getElementById("image-overlay");
